@@ -1,0 +1,102 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Oct 25 09:15:52 2018
+
+@author: DELL
+"""
+import numpy as np
+from sklearn import preprocessing
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.contrib import rnn
+
+data5=open('D:/separatedata/datachallenge_seq1.txt')
+lines=data5.readlines()
+cycles5=[]
+sensor5=np.empty((21,len(lines))).tolist()
+
+for line in lines:
+    a=line.strip().split(" ")
+    cycles5.append(float(a[1]))
+    for i in range(21):
+        sensor5[i].append(float(a[i+5]))
+        del sensor5[i][0] 
+
+for i in range(21):
+    sensor5[i]=preprocessing.scale(np.array(sensor5[i]))
+
+sensor_5=np.array(sensor5).transpose()
+
+time_step=1
+input_size=21
+output_size=1
+n_hidden_units=300
+batch_size=5
+learning_rate=0.001
+
+x=np.array(cycles5)
+y_=[]
+
+for i in range(len(x)):
+    if i<=(len(x)-130):
+        y_.append(130)
+    else:
+        y_.append(len(x)-i)
+y=np.array(y_)
+    
+xs=tf.placeholder(tf.float32,[None,time_step,input_size])
+ys=tf.placeholder(tf.float32,[None,time_step,output_size])
+
+weights={'out':tf.Variable(tf.random_normal([n_hidden_units,output_size]))}
+biases={'out':tf.constant(0.1,shape=[output_size])}
+
+def RNN(xx,weights,biases):
+    xx=tf.unstack(xx,time_step,axis=1)
+    lstm_cell=rnn.BasicLSTMCell(n_hidden_units,forget_bias=1.0)
+    outputs,states=rnn.static_rnn(lstm_cell,xx,dtype=tf.float32)
+    return tf.matmul(outputs[-1],weights['out'])+biases['out']
+
+output=RNN(xs,weights,biases)
+output_reshape=tf.reshape(output,[-1,time_step,output_size])
+
+cost=tf.losses.mean_squared_error(labels=ys,predictions=output_reshape)
+train=tf.train.AdamOptimizer(learning_rate).minimize(cost)
+
+init=tf.global_variables_initializer()
+saver=tf.train.Saver()
+
+with tf.Session() as sess:
+    sess.run(init)
+    a=plt.figure(1,figsize=(6,5))
+    plt.ion()
+    for step in range(5000):
+        k=0
+        while k<sensor_5.shape[0]:
+            batch_x=sensor_5[k:k+batch_size]
+            batch_y=y[k:k+batch_size]
+            
+            batch_x=batch_x.reshape(-1,time_step,input_size)
+            batch_y=batch_y.reshape(-1,time_step,output_size)
+            
+            k=k+batch_size
+            _,c=sess.run([train,cost],feed_dict={xs:batch_x,ys:batch_y})
+        outputs=sess.run(output,feed_dict={xs:sensor_5.reshape(-1,time_step,input_size),
+                                           ys:y.reshape(-1,time_step,output_size)})
+      
+        if step%500==0:
+            a.clear()
+            plt.plot(x,y,'r',label='target')
+            plt.legend()
+            plt.plot(x,outputs,'b',label='regression')
+            plt.legend()
+            plt.grid()
+            plt.show()
+            plt.pause(0.1)
+        plt.ioff()
+    saver.save(sess,"D:/pyprogram/lstm_seq1_model.ckpt")
+    
+
+    
+            
+        
+    
